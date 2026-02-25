@@ -15,7 +15,7 @@ async function startServer() {
     },
   });
 
-  const PORT = 3000;
+  const PORT = process.env.PORT || 3000;
   const STATS_FILE = path.join(process.cwd(), "stats.json");
 
   // Load stats
