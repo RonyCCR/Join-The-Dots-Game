@@ -1,0 +1,5 @@
+{
+  "name": "JOIN THE DOTS",
+  "description": "A professional, real-time multiplayer JOIN THE DOTS game built with React, Express, and WebSockets.",
+  "requestFramePermissions": []
+}
