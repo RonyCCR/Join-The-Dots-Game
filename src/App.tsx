@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { io, Socket } from 'socket.io-client';
 import { motion, AnimatePresence } from 'motion/react';
-import { Trophy, Users, User, ArrowRight, RefreshCw, Copy, Check, LayoutGrid, Bot, Play, LogOut, Smile, MessageSquare, Send, Zap, Search, Clock, X, Sparkles, SlidersHorizontal, Plus, Minus } from 'lucide-react';
+import { Trophy, Users, User, ArrowRight, RefreshCw, Copy, Check, LayoutGrid, Bot, Play, LogOut, Smile, MessageSquare, Send, Zap, Search, Clock, X, Sparkles, SlidersHorizontal, Plus, Minus, Radio } from 'lucide-react';
 import confetti from 'canvas-confetti';
 
 // --- Types ---
@@ -56,6 +56,7 @@ export default function App() {
   const [cellSize, setCellSize] = useState(60);
   const [activeReactions, setActiveReactions] = useState<{ id: string; reaction: string; role: PlayerRole }[]>([]);
   const [showReactionPicker, setShowReactionPicker] = useState(false);
+  const [reactionTab, setReactionTab] = useState<'emoji' | 'radio'>('emoji');
   const [showChatInput, setShowChatInput] = useState(false);
   const [chatInput, setChatInput] = useState('');
   const [totalMatches, setTotalMatches] = useState(0);
@@ -79,6 +80,23 @@ export default function App() {
     { emoji: '😭', label: 'Cry' },
     { emoji: '😠', label: 'Angry' },
     { emoji: '😡', label: 'Mad' },
+  ];
+
+  const RADIO_MESSAGES = [
+    { text: 'Well played! 👏', label: 'Well played' },
+    { text: 'Good luck! 🍀', label: 'Good luck' },
+    { text: 'Nice move! 🎯', label: 'Nice move' },
+    { text: 'Good game! 🤝', label: 'Good game' },
+    { text: 'Hurry up! ⏳', label: 'Hurry up' },
+    { text: 'Your turn! 👉', label: 'Your turn' },
+    { text: 'Oops! 😅', label: 'Oops' },
+    { text: 'Close one! ⚡', label: 'Close one' },
+    { text: 'Thinking... 🧠', label: 'Thinking' },
+    { text: 'Thank you! 🙏', label: 'Thank you' },
+    { text: 'Watch this! 😎', label: 'Watch this' },
+    { text: 'Rematch? 🔄', label: 'Rematch' },
+    { text: 'One more game! 🔥', label: 'One more' },
+    { text: "Don't trap me! 🛑", label: 'No trap' },
   ];
 
   // Sound Effects
@@ -121,17 +139,18 @@ export default function App() {
 
   useEffect(() => {
     soundsRef.current = {
-      move: new Audio('https://assets.mixkit.co/active_storage/sfx/2568/2568-preview.mp3'), // Different move sound
+      move: new Audio('https://assets.mixkit.co/active_storage/sfx/2568/2568-preview.mp3'),
       box: new Audio('https://assets.mixkit.co/active_storage/sfx/2013/2013-preview.mp3'),
-      win: new Audio('https://assets.mixkit.co/active_storage/sfx/1435/1435-preview.mp3')
+      win: new Audio('https://assets.mixkit.co/active_storage/sfx/1435/1435-preview.mp3'),
+      chat: new Audio('https://assets.mixkit.co/active_storage/sfx/2354/2354-preview.mp3'),
     };
     Object.values(soundsRef.current).forEach((audio: HTMLAudioElement) => {
-      audio.volume = 0.5;
+      audio.volume = 0.45;
       audio.preload = 'auto';
     });
   }, []);
 
-  const playSound = (type: 'move' | 'box' | 'win') => {
+  const playSound = (type: 'move' | 'box' | 'win' | 'chat') => {
     const audio = soundsRef.current[type];
     if (audio) {
       audio.currentTime = 0;
@@ -177,9 +196,11 @@ export default function App() {
 
     newSocket.on('new-reaction', (data: { reaction: string; role: PlayerRole; id: string }) => {
       setActiveReactions((prev) => [...prev, data]);
+      playSound('chat');
+      // Extended message pop-out duration so it stays on screen significantly longer
       setTimeout(() => {
         setActiveReactions((prev) => prev.filter((r) => r.id !== data.id));
-      }, 5000);
+      }, 9500);
     });
 
     newSocket.on('stats-update', (data: { totalMatches: number }) => {
@@ -291,6 +312,13 @@ export default function App() {
   const sendReaction = (reaction: string) => {
     if (!room || !myRole) return;
     socket?.emit('send-reaction', { roomId: room.id, reaction, role: myRole });
+    setShowReactionPicker(false);
+  };
+
+  const sendRadioMessage = (msg: string) => {
+    if (!room || !myRole) return;
+    socket?.emit('send-reaction', { roomId: room.id, reaction: msg, role: myRole });
+    setShowChatInput(false);
     setShowReactionPicker(false);
   };
 
@@ -885,76 +913,164 @@ export default function App() {
 
         {/* Bottom Floating Controls */}
         <div className="fixed bottom-3 right-3 sm:bottom-4 sm:right-4 z-40 flex flex-col items-end gap-2.5 sm:gap-3 max-w-[calc(100vw-24px)]">
-          {/* Floating Reactions near the button */}
-          <div className="absolute bottom-12 right-0 flex flex-col-reverse gap-2 pointer-events-none items-end max-w-[80vw]">
+          {/* Floating Reactions and Chat Messages */}
+          <div className="absolute bottom-14 right-0 flex flex-col-reverse gap-2 pointer-events-none items-end max-w-[85vw] sm:max-w-sm z-50">
             <AnimatePresence>
-              {activeReactions.map((r) => (
-                <motion.div
-                  key={r.id}
-                  initial={{ opacity: 0, x: 20, scale: 0.8 }}
-                  animate={{ opacity: 1, x: 0, scale: 1 }}
-                  exit={{ opacity: 0, x: 20, scale: 0.8 }}
-                  className={`px-2.5 sm:px-3 py-1 sm:py-1.5 rounded-2xl shadow-lg text-xs font-bold flex items-center gap-1.5 sm:gap-2 whitespace-nowrap border backdrop-blur-md ${
-                    r.role === 'player1' 
-                      ? 'bg-emerald-500/90 border-emerald-400 text-white' 
-                      : 'bg-indigo-500/90 border-indigo-400 text-white'
-                  }`}
-                >
-                  <span className="text-[10px] opacity-80 uppercase tracking-tighter">
-                    {(room.players.find(p => p.role === r.role)?.name || (r.role === 'player2' && room.isAI ? 'AI' : r.role)).substring(0, 3)}:
-                  </span>
-                  <span>{r.reaction}</span>
-                </motion.div>
-              ))}
+              {activeReactions.map((r) => {
+                const isP1 = r.role === 'player1';
+                const senderName = room.players.find(p => p.role === r.role)?.name || (r.role === 'player2' && room.isAI ? 'AI Bot' : r.role === 'player1' ? 'P1' : 'P2');
+                return (
+                  <motion.div
+                    key={r.id}
+                    initial={{ opacity: 0, x: 25, scale: 0.85, y: 8 }}
+                    animate={{ opacity: 1, x: 0, scale: 1, y: 0 }}
+                    exit={{ opacity: 0, x: 20, scale: 0.85, transition: { duration: 0.25 } }}
+                    className={`px-3 py-1.5 rounded-2xl shadow-xl text-xs flex items-center gap-2 border backdrop-blur-md max-w-full ${
+                      isP1 
+                        ? 'bg-emerald-600/95 border-emerald-400 text-white shadow-emerald-950/40' 
+                        : 'bg-indigo-600/95 border-indigo-400 text-white shadow-indigo-950/40'
+                    }`}
+                  >
+                    <div className="flex items-center gap-1.5 shrink-0 opacity-90">
+                      <span className={`w-1.5 h-1.5 rounded-full ${isP1 ? 'bg-emerald-300' : 'bg-indigo-300'} animate-ping`} />
+                      <span className="text-[10px] font-black uppercase tracking-wider truncate max-w-[80px]">
+                        {senderName}:
+                      </span>
+                    </div>
+                    <span className="font-semibold break-words leading-tight">{r.reaction}</span>
+                  </motion.div>
+                );
+              })}
             </AnimatePresence>
           </div>
 
+          {/* Reaction Picker (Emojis & Radio Messages) */}
           <AnimatePresence>
             {showReactionPicker && (
               <motion.div
-                initial={{ opacity: 0, scale: 0.9, y: 10 }}
+                initial={{ opacity: 0, scale: 0.92, y: 10 }}
                 animate={{ opacity: 1, scale: 1, y: 0 }}
-                exit={{ opacity: 0, scale: 0.9, y: 10 }}
-                className="bg-slate-900 border border-slate-800 p-2 sm:p-3 rounded-2xl shadow-2xl grid grid-cols-6 gap-1.5 sm:gap-2 mb-1 max-w-[calc(100vw-24px)] overflow-x-auto"
+                exit={{ opacity: 0, scale: 0.92, y: 10 }}
+                className="bg-slate-900 border border-slate-800 p-2.5 sm:p-3 rounded-2xl shadow-2xl mb-1 w-[calc(100vw-28px)] max-w-xs sm:max-w-sm flex flex-col gap-2.5"
               >
-                {REACTIONS.map((r) => (
-                  <button
-                    key={r.emoji}
-                    onClick={() => sendReaction(r.emoji)}
-                    className="w-9 h-9 sm:w-10 sm:h-10 flex items-center justify-center bg-slate-800 hover:bg-slate-700 rounded-xl transition-all active:scale-90 text-base sm:text-lg shrink-0"
-                    title={r.label}
-                  >
-                    {r.emoji}
-                  </button>
-                ))}
+                {/* Mode Tabs */}
+                <div className="flex items-center justify-between pb-1 border-b border-slate-800/80">
+                  <div className="flex gap-1 bg-slate-950/80 p-1 rounded-xl border border-slate-800/70 w-full">
+                    <button
+                      type="button"
+                      onClick={() => setReactionTab('emoji')}
+                      className={`flex-1 py-1.5 text-xs font-bold rounded-lg transition-all flex items-center justify-center gap-1.5 ${
+                        reactionTab === 'emoji' ? 'bg-emerald-600 text-white shadow-sm' : 'text-slate-400 hover:text-slate-200'
+                      }`}
+                    >
+                      <Smile className="w-3.5 h-3.5" />
+                      <span>Emojis</span>
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setReactionTab('radio')}
+                      className={`flex-1 py-1.5 text-xs font-bold rounded-lg transition-all flex items-center justify-center gap-1.5 ${
+                        reactionTab === 'radio' ? 'bg-emerald-600 text-white shadow-sm' : 'text-slate-400 hover:text-slate-200'
+                      }`}
+                    >
+                      <Radio className="w-3.5 h-3.5" />
+                      <span>Quick Radio</span>
+                    </button>
+                  </div>
+                </div>
+
+                {reactionTab === 'emoji' ? (
+                  <div className="grid grid-cols-6 gap-1.5 sm:gap-2">
+                    {REACTIONS.map((r) => (
+                      <button
+                        key={r.emoji}
+                        onClick={() => sendReaction(r.emoji)}
+                        className="w-10 h-10 flex items-center justify-center bg-slate-800/90 hover:bg-slate-700 rounded-xl transition-all active:scale-90 text-lg shrink-0 border border-slate-700/50 hover:border-emerald-500/50"
+                        title={r.label}
+                      >
+                        {r.emoji}
+                      </button>
+                    ))}
+                  </div>
+                ) : (
+                  <div className="grid grid-cols-2 gap-1.5 max-h-48 overflow-y-auto pr-0.5 no-scrollbar">
+                    {RADIO_MESSAGES.map((msg) => (
+                      <button
+                        key={msg.text}
+                        type="button"
+                        onClick={() => sendRadioMessage(msg.text)}
+                        className="text-left px-2.5 py-2 bg-slate-800/90 hover:bg-slate-700 active:scale-95 text-slate-200 text-xs font-semibold rounded-xl border border-slate-700/60 transition-all truncate hover:border-emerald-500/50 hover:text-white"
+                        title={msg.text}
+                      >
+                        {msg.text}
+                      </button>
+                    ))}
+                  </div>
+                )}
               </motion.div>
             )}
           </AnimatePresence>
 
+          {/* Chat & Quick Radio Panel */}
           <AnimatePresence>
             {showChatInput && (
-              <motion.form
-                onSubmit={handleSendMessage}
-                initial={{ opacity: 0, scale: 0.9, y: 10 }}
+              <motion.div
+                initial={{ opacity: 0, scale: 0.92, y: 10 }}
                 animate={{ opacity: 1, scale: 1, y: 0 }}
-                exit={{ opacity: 0, scale: 0.9, y: 10 }}
-                className="bg-slate-900 border border-slate-800 p-2 rounded-2xl shadow-2xl mb-1 flex gap-2 w-[calc(100vw-32px)] max-w-xs"
+                exit={{ opacity: 0, scale: 0.92, y: 10 }}
+                className="bg-slate-900 border border-slate-800 p-3 rounded-2xl shadow-2xl mb-1 flex flex-col gap-2.5 w-[calc(100vw-28px)] max-w-xs sm:max-w-sm"
               >
-                <input
-                  autoFocus
-                  type="text"
-                  value={chatInput}
-                  onChange={(e) => setChatInput(e.target.value)}
-                  placeholder="Type a message..."
-                  className="flex-1 min-w-0 bg-slate-800 border border-slate-700 rounded-xl px-3 py-2 text-xs focus:outline-none focus:ring-1 focus:ring-emerald-500"
-                />
-                <button
-                  type="submit"
-                  className="bg-emerald-600 hover:bg-emerald-500 text-white p-2 rounded-xl transition-all active:scale-90 shrink-0"
+                {/* Quick Radio Header */}
+                <div className="flex items-center justify-between pb-1 border-b border-slate-800/80">
+                  <div className="flex items-center gap-1.5 text-xs font-bold text-slate-300">
+                    <Radio className="w-3.5 h-3.5 text-indigo-400" />
+                    <span>Quick Radio Messages</span>
+                  </div>
+                  <span className="text-[10px] text-slate-500 font-medium">Tap to send</span>
+                </div>
+
+                {/* Quick Radio Pills Grid */}
+                <div className="grid grid-cols-2 gap-1.5 max-h-36 overflow-y-auto pr-0.5 no-scrollbar">
+                  {RADIO_MESSAGES.map((msg) => (
+                    <button
+                      key={msg.text}
+                      type="button"
+                      onClick={() => sendRadioMessage(msg.text)}
+                      className="text-left px-2.5 py-1.5 bg-slate-800/90 hover:bg-slate-700 active:scale-95 text-slate-200 text-xs font-medium rounded-xl border border-slate-700/60 transition-all truncate hover:border-indigo-500/50 hover:text-white"
+                      title={msg.text}
+                    >
+                      {msg.text}
+                    </button>
+                  ))}
+                </div>
+
+                {/* Divider / Custom Chat Header */}
+                <div className="pt-1 border-t border-slate-800 flex items-center justify-between text-[10px] uppercase font-bold text-slate-500">
+                  <span>Custom Chat Message</span>
+                </div>
+
+                {/* Custom message input form */}
+                <form
+                  onSubmit={handleSendMessage}
+                  className="flex gap-2"
                 >
-                  <Send className="w-4 h-4" />
-                </button>
-              </motion.form>
+                  <input
+                    autoFocus
+                    type="text"
+                    value={chatInput}
+                    onChange={(e) => setChatInput(e.target.value)}
+                    placeholder="Type a message..."
+                    className="flex-1 min-w-0 bg-slate-800 border border-slate-700 rounded-xl px-3 py-2 text-xs text-white focus:outline-none focus:ring-1 focus:ring-indigo-500"
+                  />
+                  <button
+                    type="submit"
+                    className="bg-indigo-600 hover:bg-indigo-500 text-white px-3 py-2 rounded-xl transition-all active:scale-90 shrink-0 flex items-center gap-1 text-xs font-bold shadow-md shadow-indigo-950/40"
+                  >
+                    <Send className="w-3.5 h-3.5" />
+                    <span>Send</span>
+                  </button>
+                </form>
+              </motion.div>
             )}
           </AnimatePresence>
           
@@ -964,7 +1080,8 @@ export default function App() {
                 setShowReactionPicker(!showReactionPicker);
                 setShowChatInput(false);
               }}
-              aria-label="Send Reaction"
+              aria-label="Send Reaction or Radio"
+              title="Emojis & Radio"
               className={`flex items-center justify-center w-9 h-9 sm:w-10 sm:h-10 rounded-full transition-all active:scale-95 shadow-lg backdrop-blur-sm border ${
                 showReactionPicker ? 'bg-emerald-500 border-emerald-400 text-white' : 'bg-slate-900/90 border-slate-800 text-slate-400 hover:bg-slate-800'
               }`}
@@ -976,7 +1093,8 @@ export default function App() {
                 setShowChatInput(!showChatInput);
                 setShowReactionPicker(false);
               }}
-              aria-label="Chat Message"
+              aria-label="Chat & Radio Messages"
+              title="Quick Radio & Custom Chat"
               className={`flex items-center justify-center w-9 h-9 sm:w-10 sm:h-10 rounded-full transition-all active:scale-95 shadow-lg backdrop-blur-sm border ${
                 showChatInput ? 'bg-indigo-500 border-indigo-400 text-white' : 'bg-slate-900/90 border-slate-800 text-slate-400 hover:bg-slate-800'
               }`}

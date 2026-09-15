@@ -483,6 +483,40 @@ async function startServer() {
 
     socket.on("send-reaction", ({ roomId, reaction, role }) => {
       io.to(roomId).emit("new-reaction", { reaction, role, id: nanoid(4) });
+
+      // If playing with AI bot in solo or quick match, bot can occasionally reply with quick radio message
+      const room = rooms[roomId];
+      if (room && room.isAI && role === "player1") {
+        if (Math.random() < 0.6) {
+          setTimeout(() => {
+            const currentRoom = rooms[roomId];
+            if (!currentRoom || currentRoom.status === "waiting") return;
+            const lower = (reaction || "").toLowerCase();
+            let botReplies = ["Well played! 👏", "Nice move! 🎯", "Good game! 🤝", "Thanks! 🙏", "🔥", "😎", "Close one! ⚡"];
+            if (lower.includes("hello") || lower.includes("hi") || lower.includes("hey")) {
+              botReplies = ["Hello! 👋", "Hey there! 🔥", "Good luck! 🍀"];
+            } else if (lower.includes("luck")) {
+              botReplies = ["Thanks! You too! 🤝", "Good luck! 🍀", "Let's see who wins! 😎"];
+            } else if (lower.includes("well played") || lower.includes("nice") || lower.includes("wp")) {
+              botReplies = ["Thank you! 🙏", "You too! 👏", "Nice one! 🎯"];
+            } else if (lower.includes("hurry") || lower.includes("turn")) {
+              botReplies = ["Thinking... 🧠", "Almost ready! ⏳", "Making my move! 👀"];
+            } else if (lower.includes("rematch") || lower.includes("one more") || lower.includes("game")) {
+              botReplies = ["I'm ready! 🔄", "Let's play again! 🔥", "Always ready! 🤝"];
+            } else if (lower.includes("oops") || lower.includes("close")) {
+              botReplies = ["Haha close one! ⚡", "Careful! 😅", "Whew! 😲"];
+            } else if (lower.includes("thank") || lower.includes("ty")) {
+              botReplies = ["Welcome! 😊", "Anytime! 🤝", "Good luck! 🍀"];
+            }
+            const reply = botReplies[Math.floor(Math.random() * botReplies.length)];
+            io.to(roomId).emit("new-reaction", {
+              reaction: reply,
+              role: "player2",
+              id: nanoid(4),
+            });
+          }, 1100);
+        }
+      }
     });
 
     socket.on("disconnect", () => {
