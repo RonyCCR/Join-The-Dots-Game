@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { io, Socket } from 'socket.io-client';
 import { motion, AnimatePresence } from 'motion/react';
-import { Trophy, Users, User, ArrowRight, RefreshCw, Copy, Check, LayoutGrid, Bot, Play, LogOut, Smile, MessageSquare, Send } from 'lucide-react';
+import { Trophy, Users, User, ArrowRight, RefreshCw, Copy, Check, LayoutGrid, Bot, Play, LogOut, Smile, MessageSquare, Send, Zap, Search, Clock, X, Sparkles, SlidersHorizontal, Plus, Minus } from 'lucide-react';
 import confetti from 'canvas-confetti';
 
 // --- Types ---
@@ -33,6 +33,7 @@ interface Room {
   turn: PlayerRole;
   status: 'waiting' | 'playing' | 'finished';
   isAI?: boolean;
+  isQuickMatch?: boolean;
 }
 
 // --- Components ---
@@ -58,19 +59,26 @@ export default function App() {
   const [showChatInput, setShowChatInput] = useState(false);
   const [chatInput, setChatInput] = useState('');
   const [totalMatches, setTotalMatches] = useState(0);
+  const [isSearching, setIsSearching] = useState(false);
+  const [searchTimer, setSearchTimer] = useState(15);
+  const [useCustomRandomSize, setUseCustomRandomSize] = useState<boolean>(false);
+  const [randomRows, setRandomRows] = useState<number>(5);
+  const [randomCols, setRandomCols] = useState<number>(5);
   const boardRef = useRef<HTMLDivElement>(null);
 
   const REACTIONS = [
     { emoji: '🔥', label: 'Hot!' },
     { emoji: '😎', label: 'Cool' },
+    { emoji: '😍', label: 'Heart Eyes' },
+    { emoji: '❤️', label: 'Love' },
+    { emoji: '👏', label: 'Bravo' },
+    { emoji: '😂', label: 'Haha' },
     { emoji: '😲', label: 'Wow' },
-    { emoji: '😠', label: 'Angry' },
-    { emoji: '😡', label: 'Mad' },
+    { emoji: '🤔', label: 'Hmm' },
     { emoji: '😢', label: 'Sad' },
     { emoji: '😭', label: 'Cry' },
-    { emoji: '👏', label: 'Bravo' },
-    { emoji: '🤔', label: 'Hmm' },
-    { emoji: '😂', label: 'Haha' },
+    { emoji: '😠', label: 'Angry' },
+    { emoji: '😡', label: 'Mad' },
   ];
 
   // Sound Effects
@@ -166,10 +174,56 @@ export default function App() {
       setTotalMatches(data.totalMatches);
     });
 
+    newSocket.on('search-started', ({ timeoutSeconds }: { timeoutSeconds: number }) => {
+      setIsSearching(true);
+      setSearchTimer(timeoutSeconds || 15);
+    });
+
+    newSocket.on('match-found', (data: { room: Room; playerRole: PlayerRole }) => {
+      setIsSearching(false);
+      setRoom(data.room);
+      setMyRole(data.playerRole);
+      setIsJoining(false);
+    });
+
+    newSocket.on('search-cancelled', () => {
+      setIsSearching(false);
+    });
+
     return () => {
       newSocket.disconnect();
     };
   }, []);
+
+  useEffect(() => {
+    if (!isSearching) return;
+    const timer = setInterval(() => {
+      setSearchTimer((prev) => (prev > 0 ? prev - 1 : 0));
+    }, 1000);
+    return () => clearInterval(timer);
+  }, [isSearching]);
+
+  const startSearchMatch = () => {
+    const name = playerName.trim();
+    if (!name) {
+      setNameError(true);
+      return;
+    }
+    setNameError(false);
+    setIsSearching(true);
+    setSearchTimer(15);
+    socket?.emit('search-match', { 
+      playerName: name, 
+      useCustomSize: useCustomRandomSize,
+      customRows: randomRows,
+      customCols: randomCols 
+    });
+  };
+
+  const cancelSearch = () => {
+    socket?.emit('cancel-search');
+    setIsSearching(false);
+  };
 
   const createRoom = (isAI = false) => {
     if (!playerName.trim()) {
@@ -287,32 +341,219 @@ export default function App() {
               </div>
 
               {!isJoining ? (
-                <div className="grid grid-cols-1 gap-4">
+                <div className="grid grid-cols-1 gap-3.5">
+                  <div className="bg-slate-900/90 border border-slate-800 rounded-2xl p-3.5 shadow-lg flex flex-col gap-3">
+                    <button 
+                      onClick={startSearchMatch}
+                      className="group relative overflow-hidden flex items-center justify-between w-full bg-gradient-to-r from-emerald-600 via-teal-600 to-emerald-500 hover:from-emerald-500 hover:to-teal-400 text-white font-bold py-3.5 px-5 rounded-xl transition-all shadow-md shadow-emerald-950/40 active:scale-95 border border-emerald-400/30"
+                    >
+                      <div className="flex items-center gap-3">
+                        <div className="p-2 bg-white/10 backdrop-blur-sm rounded-lg border border-white/10">
+                          <Zap className="w-5 h-5 text-amber-300 fill-amber-300" />
+                        </div>
+                        <div className="text-left">
+                          <div className="text-sm sm:text-base font-bold leading-tight flex items-center gap-2">
+                            Search Random Match
+                            <span className="text-[10px] font-semibold bg-emerald-400/20 text-emerald-300 px-2 py-0.5 rounded-full border border-emerald-400/30">
+                              {useCustomRandomSize ? `${randomRows}×${randomCols}` : 'Auto'}
+                            </span>
+                          </div>
+                          <div className="text-[11px] text-emerald-100/75 font-normal mt-0.5">
+                            {useCustomRandomSize ? `Custom Grid (${(randomRows - 1) * (randomCols - 1)} Boxes)` : 'Online matchmaking • 15s wait'}
+                          </div>
+                        </div>
+                      </div>
+                      <ArrowRight className="w-5 h-5 group-hover:translate-x-1 transition-transform text-white" />
+                    </button>
+
+                    {/* Customizable Board Size Toggle & Controls */}
+                    <div className="pt-2 border-t border-slate-800 flex flex-col gap-2.5">
+                      <div className="flex items-center justify-between">
+                        <div className="flex items-center gap-2">
+                          <div className={`p-1.5 rounded-lg transition-colors ${useCustomRandomSize ? 'bg-emerald-500/20 text-emerald-400' : 'bg-slate-800 text-slate-400'}`}>
+                            <SlidersHorizontal className="w-3.5 h-3.5" />
+                          </div>
+                          <div>
+                            <div className="text-xs font-semibold text-slate-200 flex items-center gap-2">
+                              Custom Board Size
+                              <span className={`text-[9px] px-1.5 py-0.5 rounded font-bold uppercase tracking-wider ${
+                                useCustomRandomSize ? 'bg-emerald-500/20 text-emerald-400 border border-emerald-500/30' : 'bg-slate-800 text-slate-500'
+                              }`}>
+                                {useCustomRandomSize ? 'ON' : 'OFF'}
+                              </span>
+                            </div>
+                            <div className="text-[10px] text-slate-500">
+                              {useCustomRandomSize ? 'Custom rows & columns enabled' : 'Optional • Default standard 5×5'}
+                            </div>
+                          </div>
+                        </div>
+
+                        {/* Interactive Toggle Switch */}
+                        <button
+                          type="button"
+                          onClick={() => setUseCustomRandomSize(!useCustomRandomSize)}
+                          aria-label="Toggle custom board size"
+                          className={`relative inline-flex h-6 w-11 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none ${
+                            useCustomRandomSize ? 'bg-emerald-500' : 'bg-slate-800'
+                          }`}
+                        >
+                          <span
+                            className={`pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow-md ring-0 transition duration-200 ease-in-out ${
+                              useCustomRandomSize ? 'translate-x-5' : 'translate-x-0'
+                            }`}
+                          />
+                        </button>
+                      </div>
+
+                      {/* Custom Size Expanded Controls */}
+                      <AnimatePresence>
+                        {useCustomRandomSize && (
+                          <motion.div
+                            initial={{ opacity: 0, height: 0 }}
+                            animate={{ opacity: 1, height: 'auto' }}
+                            exit={{ opacity: 0, height: 0 }}
+                            className="overflow-hidden space-y-3 pt-1"
+                          >
+                            {/* Fast preset pills */}
+                            <div className="flex items-center justify-between gap-1 overflow-x-auto pb-0.5">
+                              {[
+                                { r: 3, c: 3, label: '3×3', desc: '4 Boxes' },
+                                { r: 4, c: 4, label: '4×4', desc: '9 Boxes' },
+                                { r: 5, c: 5, label: '5×5', desc: '16 Boxes' },
+                                { r: 6, c: 6, label: '6×6', desc: '25 Boxes' },
+                                { r: 7, c: 7, label: '7×7', desc: '36 Boxes' },
+                                { r: 8, c: 8, label: '8×8', desc: '49 Boxes' },
+                              ].map((p) => {
+                                const isSelected = randomRows === p.r && randomCols === p.c;
+                                return (
+                                  <button
+                                    key={p.label}
+                                    type="button"
+                                    onClick={() => {
+                                      setRandomRows(p.r);
+                                      setRandomCols(p.c);
+                                    }}
+                                    className={`px-2 py-1 rounded-lg text-[11px] font-bold transition-all whitespace-nowrap ${
+                                      isSelected
+                                        ? 'bg-emerald-500 text-white shadow-sm shadow-emerald-500/30'
+                                        : 'bg-slate-800/80 text-slate-400 hover:text-slate-200 hover:bg-slate-700/80'
+                                    }`}
+                                    title={p.desc}
+                                  >
+                                    {p.label}
+                                  </button>
+                                );
+                              })}
+                            </div>
+
+                            {/* Row & Column Sliders with Steppers */}
+                            <div className="bg-slate-950/60 rounded-xl p-3 border border-slate-800/80 space-y-3">
+                              <div>
+                                <div className="flex items-center justify-between text-xs mb-1.5">
+                                  <span className="text-slate-400 font-medium">Rows (Dots):</span>
+                                  <div className="flex items-center gap-1.5">
+                                    <button
+                                      type="button"
+                                      onClick={() => setRandomRows(prev => Math.max(3, prev - 1))}
+                                      className="w-5 h-5 rounded bg-slate-800 hover:bg-slate-700 text-slate-300 flex items-center justify-center text-xs"
+                                    >
+                                      <Minus className="w-3 h-3" />
+                                    </button>
+                                    <span className="font-mono font-bold text-emerald-400 w-5 text-center">{randomRows}</span>
+                                    <button
+                                      type="button"
+                                      onClick={() => setRandomRows(prev => Math.min(10, prev + 1))}
+                                      className="w-5 h-5 rounded bg-slate-800 hover:bg-slate-700 text-slate-300 flex items-center justify-center text-xs"
+                                    >
+                                      <Plus className="w-3 h-3" />
+                                    </button>
+                                  </div>
+                                </div>
+                                <input
+                                  type="range"
+                                  min="3"
+                                  max="10"
+                                  value={randomRows}
+                                  onChange={(e) => setRandomRows(parseInt(e.target.value))}
+                                  className="w-full h-1.5 bg-slate-800 rounded-lg appearance-none cursor-pointer accent-emerald-500"
+                                />
+                              </div>
+
+                              <div>
+                                <div className="flex items-center justify-between text-xs mb-1.5">
+                                  <span className="text-slate-400 font-medium">Columns (Dots):</span>
+                                  <div className="flex items-center gap-1.5">
+                                    <button
+                                      type="button"
+                                      onClick={() => setRandomCols(prev => Math.max(3, prev - 1))}
+                                      className="w-5 h-5 rounded bg-slate-800 hover:bg-slate-700 text-slate-300 flex items-center justify-center text-xs"
+                                    >
+                                      <Minus className="w-3 h-3" />
+                                    </button>
+                                    <span className="font-mono font-bold text-emerald-400 w-5 text-center">{randomCols}</span>
+                                    <button
+                                      type="button"
+                                      onClick={() => setRandomCols(prev => Math.min(10, prev + 1))}
+                                      className="w-5 h-5 rounded bg-slate-800 hover:bg-slate-700 text-slate-300 flex items-center justify-center text-xs"
+                                    >
+                                      <Plus className="w-3 h-3" />
+                                    </button>
+                                  </div>
+                                </div>
+                                <input
+                                  type="range"
+                                  min="3"
+                                  max="10"
+                                  value={randomCols}
+                                  onChange={(e) => setRandomCols(parseInt(e.target.value))}
+                                  className="w-full h-1.5 bg-slate-800 rounded-lg appearance-none cursor-pointer accent-emerald-500"
+                                />
+                              </div>
+
+                              <div className="pt-2 border-t border-slate-800 flex items-center justify-between text-[11px] text-slate-400">
+                                <span>Total Playable Boxes:</span>
+                                <span className="font-bold text-slate-200">
+                                  {(randomRows - 1) * (randomCols - 1)} Boxes ({randomRows}×{randomCols} Dots)
+                                </span>
+                              </div>
+                            </div>
+                          </motion.div>
+                        )}
+                      </AnimatePresence>
+                    </div>
+                  </div>
+
+                  <div className="relative flex items-center justify-center my-0.5">
+                    <div className="w-full border-t border-slate-800"></div>
+                    <span className="bg-slate-900 px-3 text-[10px] uppercase font-bold tracking-widest text-slate-500">or play custom</span>
+                    <div className="w-full border-t border-slate-800"></div>
+                  </div>
+
                   <button 
                     onClick={() => createRoom(false)}
-                    className="group flex items-center justify-between w-full bg-emerald-600 hover:bg-emerald-500 text-white font-semibold py-4 px-6 rounded-xl transition-all active:scale-95"
+                    className="group flex items-center justify-between w-full bg-slate-800/90 hover:bg-slate-700/90 border border-slate-700/60 text-white font-semibold py-3.5 px-6 rounded-xl transition-all active:scale-95"
                   >
                     <div className="flex items-center gap-3">
-                      <Users className="w-5 h-5" />
-                      <span>Multiplayer Room</span>
+                      <Users className="w-5 h-5 text-emerald-400" />
+                      <span>Create Custom Room</span>
                     </div>
-                    <ArrowRight className="w-5 h-5 group-hover:translate-x-1 transition-transform" />
+                    <ArrowRight className="w-4 h-4 text-slate-400 group-hover:translate-x-1 transition-transform" />
                   </button>
                   <button 
                     onClick={() => createRoom(true)}
-                    className="group flex items-center justify-between w-full bg-indigo-600 hover:bg-indigo-500 text-white font-semibold py-4 px-6 rounded-xl transition-all active:scale-95"
+                    className="group flex items-center justify-between w-full bg-slate-800/90 hover:bg-slate-700/90 border border-slate-700/60 text-white font-semibold py-3.5 px-6 rounded-xl transition-all active:scale-95"
                   >
                     <div className="flex items-center gap-3">
-                      <Bot className="w-5 h-5" />
-                      <span>Play vs AI</span>
+                      <Bot className="w-5 h-5 text-indigo-400" />
+                      <span>Play vs AI (Solo)</span>
                     </div>
-                    <ArrowRight className="w-5 h-5 group-hover:translate-x-1 transition-transform" />
+                    <ArrowRight className="w-4 h-4 text-slate-400 group-hover:translate-x-1 transition-transform" />
                   </button>
                   <button 
                     onClick={() => setIsJoining(true)}
-                    className="w-full bg-slate-800 hover:bg-slate-700 text-slate-200 font-semibold py-4 px-6 rounded-xl transition-all"
+                    className="w-full bg-slate-900 hover:bg-slate-800 text-slate-300 hover:text-white font-semibold py-3.5 px-6 rounded-xl transition-all border border-slate-800"
                   >
-                    Join Existing Room
+                    Join with Room Code
                   </button>
                 </div>
               ) : (
@@ -350,6 +591,75 @@ export default function App() {
             </p>
           </motion.div>
         </div>
+
+        {/* Matchmaking Searching Overlay */}
+        <AnimatePresence>
+          {isSearching && (
+            <motion.div 
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              className="fixed inset-0 z-50 bg-slate-950/85 backdrop-blur-md flex items-center justify-center p-4"
+            >
+              <motion.div 
+                initial={{ scale: 0.9, y: 15 }}
+                animate={{ scale: 1, y: 0 }}
+                exit={{ scale: 0.9, y: 15 }}
+                className="bg-slate-900 border border-slate-800 rounded-[2.5rem] p-8 max-w-sm w-full text-center shadow-2xl relative overflow-hidden"
+              >
+                {/* Radar Pulse Effect */}
+                <div className="relative w-28 h-28 mx-auto mb-6 flex items-center justify-center">
+                  <div className="absolute inset-0 rounded-full bg-emerald-500/10 animate-ping" />
+                  <div className="absolute inset-3 rounded-full bg-emerald-500/15 animate-pulse" />
+                  <div className="relative w-16 h-16 rounded-2xl bg-gradient-to-br from-emerald-500 to-teal-600 flex items-center justify-center shadow-lg shadow-emerald-500/30">
+                    <Search className="w-8 h-8 text-white animate-pulse" />
+                  </div>
+                </div>
+
+                <h3 className="text-xl font-bold tracking-tight text-white mb-1.5">
+                  Searching for Match...
+                </h3>
+                <p className="text-xs text-slate-400 mb-6 px-2">
+                  Looking for an active online opponent. If none joins within 15s, a player will be assigned!
+                </p>
+
+                {/* Live Countdown & Board Info Badges */}
+                <div className="flex flex-col items-center gap-2 mb-6">
+                  <div className="inline-flex items-center gap-2 px-4 py-1.5 bg-slate-800/90 rounded-full border border-slate-700/60">
+                    <Clock className="w-4 h-4 text-emerald-400 animate-spin" style={{ animationDuration: '3s' }} />
+                    <span className="text-xs font-mono font-bold text-slate-200">
+                      Time remaining: <span className="text-emerald-400 font-black">{searchTimer}s</span>
+                    </span>
+                  </div>
+                  <div className="inline-flex items-center gap-1.5 px-3 py-1 bg-slate-800/50 rounded-full border border-slate-800 text-[11px] text-slate-400">
+                    <LayoutGrid className="w-3 h-3 text-emerald-400" />
+                    <span>
+                      Board Size:{' '}
+                      {useCustomRandomSize ? (
+                        <>
+                          <strong className="text-emerald-400">Custom {randomRows}×{randomCols}</strong> ({(randomRows - 1) * (randomCols - 1)} Boxes)
+                        </>
+                      ) : (
+                        <>
+                          <strong className="text-slate-200">Auto (5×5)</strong> (16 Boxes)
+                        </>
+                      )}
+                    </span>
+                  </div>
+                </div>
+
+                {/* Cancel Search Button */}
+                <button 
+                  onClick={cancelSearch}
+                  className="w-full py-3.5 bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-white font-semibold rounded-xl text-sm transition-all border border-slate-700/50 flex items-center justify-center gap-2 active:scale-95"
+                >
+                  <X className="w-4 h-4" />
+                  Cancel Search
+                </button>
+              </motion.div>
+            </motion.div>
+          )}
+        </AnimatePresence>
         
         <footer className="py-6 text-center text-slate-600 text-xs font-medium">
           Made ❤️ with RonyCCR
@@ -406,14 +716,14 @@ export default function App() {
               }`}>
                 <div className="text-right">
                   <div className={`text-[10px] font-bold uppercase tracking-widest ${room.turn === 'player2' ? 'text-indigo-500' : 'text-slate-500'}`}>
-                    {room.players.find(p => p.role === 'player2')?.name || (room.isAI ? 'AI Bot' : 'P2')}
+                    {room.players.find(p => p.role === 'player2')?.name || (room.isAI && !room.isQuickMatch ? 'AI Bot' : 'Player 2')}
                   </div>
                   <div className="text-sm sm:text-lg font-black leading-none">{room.scores.player2}</div>
                 </div>
                 <div className={`w-10 h-10 sm:w-12 sm:h-12 rounded-full border-2 flex items-center justify-center transition-all duration-300 ${
                   room.turn === 'player2' ? 'border-indigo-500 bg-indigo-500/20 shadow-[0_0_15px_rgba(99,102,241,0.3)]' : 'border-slate-700 bg-slate-800'
                 }`}>
-                  {room.isAI ? <Bot className={`w-5 h-5 sm:w-6 sm:h-6 ${room.turn === 'player2' ? 'text-indigo-500' : 'text-slate-500'}`} /> : <User className={`w-5 h-5 sm:w-6 sm:h-6 ${room.turn === 'player2' ? 'text-indigo-500' : 'text-slate-500'}`} />}
+                  {room.isAI && !room.isQuickMatch ? <Bot className={`w-5 h-5 sm:w-6 sm:h-6 ${room.turn === 'player2' ? 'text-indigo-500' : 'text-slate-500'}`} /> : <User className={`w-5 h-5 sm:w-6 sm:h-6 ${room.turn === 'player2' ? 'text-indigo-500' : 'text-slate-500'}`} />}
                 </div>
               </div>
             </div>
@@ -633,13 +943,14 @@ export default function App() {
                 initial={{ opacity: 0, scale: 0.9, y: 10 }}
                 animate={{ opacity: 1, scale: 1, y: 0 }}
                 exit={{ opacity: 0, scale: 0.9, y: 10 }}
-                className="bg-slate-900 border border-slate-800 p-3 rounded-2xl shadow-2xl grid grid-cols-5 gap-2 mb-2"
+                className="bg-slate-900 border border-slate-800 p-3 rounded-2xl shadow-2xl grid grid-cols-6 gap-2 mb-2"
               >
                 {REACTIONS.map((r) => (
                   <button
                     key={r.emoji}
                     onClick={() => sendReaction(r.emoji)}
                     className="w-10 h-10 flex items-center justify-center bg-slate-800 hover:bg-slate-700 rounded-xl transition-all active:scale-90 text-lg"
+                    title={r.label}
                   >
                     {r.emoji}
                   </button>
@@ -730,7 +1041,7 @@ export default function App() {
                 {room.scores.player1 === room.scores.player2 ? "It's a Draw!" : 
                  room.scores.player1 > room.scores.player2 
                    ? `${room.players.find(p => p.role === 'player1')?.name || 'Player 1'} Wins!` 
-                   : `${room.players.find(p => p.role === 'player2')?.name || (room.isAI ? 'AI Bot' : 'Player 2')} Wins!`}
+                   : `${room.players.find(p => p.role === 'player2')?.name || (room.isAI && !room.isQuickMatch ? 'AI Bot' : 'Player 2')} Wins!`}
               </h2>
               <p className="text-slate-400 mb-8">
                 Final Score: {room.scores.player1} - {room.scores.player2}
